@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LOS Relative Motion Trainer</title>
+<meta name="description" content="Line-of-sight relative motion trainer — estimate target course, CPA and intercept course. Training aid only; not for navigation.">
+<style>
+:root{--bg:#07121f;--panel:#102238;--panel2:#142b45;--ink:#eaf5ff;--muted:#9bb3c9;--cyan:#44d3ff;--green:#54e68b;--amber:#ffc857;--red:#ff6b6b;--line:#31526e}
+*{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 30% 0,#163653 0,#07121f 48%);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;min-height:100vh}
+header{padding:18px 22px;border-bottom:1px solid #24435d;background:#091827e8;position:sticky;top:0;z-index:4} h1{font-size:1.35rem;margin:0 0 4px}.sub{color:var(--muted);font-size:.88rem}
+main{max-width:1280px;margin:auto;padding:18px;display:grid;grid-template-columns:minmax(480px,1.35fr) minmax(330px,.85fr);gap:16px}.card{background:linear-gradient(155deg,var(--panel),#0b1b2d);border:1px solid #274966;border-radius:14px;box-shadow:0 10px 30px #0006;padding:16px}.topbar{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:12px}.stat{background:#091827;border:1px solid #294c68;border-radius:10px;padding:8px;text-align:center}.stat b{display:block;font-size:1.15rem;color:var(--cyan)}.stat span{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.canvasWrap{position:relative}canvas{display:block;width:100%;height:auto;background:#06111d;border:1px solid #31526e;border-radius:12px}.north{position:absolute;right:14px;top:12px;color:var(--muted);font-weight:700}.dataGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}.datum{padding:9px;background:#0a1929;border-radius:8px;border:1px solid #284860}.datum small{display:block;color:var(--muted)}
+label{font-size:.84rem;color:#bed0df;display:block;margin:10px 0 5px}.answerRow{display:grid;grid-template-columns:1fr 1fr;gap:10px}input,select,button{font:inherit}input,select{width:100%;background:#071523;color:var(--ink);border:1px solid #385d79;border-radius:8px;padding:10px}input:focus,select:focus{outline:2px solid #2ba8d1}.buttons{display:flex;gap:8px;margin-top:13px;flex-wrap:wrap}button{border:0;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer;background:#24435d;color:white}button.primary{background:var(--cyan);color:#042132}button.warn{background:var(--amber);color:#2d2100}button:hover{filter:brightness(1.12)}button:disabled{opacity:.45;cursor:not-allowed}.feedback{min-height:90px;margin-top:12px;padding:12px;border-radius:10px;background:#091827;border:1px solid #284860}.good{color:var(--green)}.bad{color:var(--red)}.neutral{color:var(--amber)}
+.progress{height:9px;background:#07131f;border-radius:20px;overflow:hidden;margin-top:8px}.progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--cyan),var(--green));transition:width .3s}.settings{display:grid;grid-template-columns:1fr 1fr;gap:8px}.legend{font-size:.82rem;color:var(--muted);line-height:1.45;margin-top:12px}.history{margin-top:12px;max-height:150px;overflow:auto;font-size:.8rem}.history div{padding:6px;border-bottom:1px solid #1e3b52}.badge{display:inline-block;border-radius:999px;padding:3px 8px;background:#24435d;color:#d6e8f6;font-size:.75rem}.danger{color:var(--red)}.hidden{display:none}.timerBar{height:6px;background:#32191c;border-radius:20px;overflow:hidden;margin-bottom:10px}.timerBar i{height:100%;display:block;background:var(--green);width:100%}
+input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }
+:focus{outline:2px solid #2ba8d1}
+@media(max-width:900px){main{grid-template-columns:1fr}.topbar{grid-template-columns:repeat(3,1fr)}}@media(max-width:520px){main{padding:8px}.dataGrid,.answerRow,.settings{grid-template-columns:1fr}.topbar{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<header><h1>LOS Relative Motion Trainer</h1><div class="sub">Estimate target course, predicted CPA, and own-ship lead-intercept course. Training aid only, not for navigation.</div></header>
+<main>
+<section class="card">
+ <div class="topbar">
+  <div class="stat"><b id="score">0</b><span>Score</span></div><div class="stat"><b id="streak">0</b><span>Streak</span></div><div class="stat"><b id="accuracy">0%</b><span>Accuracy</span></div><div class="stat"><b id="level">1</b><span>Level</span></div><div class="stat"><b id="timer">--</b><span>Seconds</span></div><div class="stat"><b id="scenario">--</b><span>Situation</span></div>
+ </div>
+ <div class="timerBar" aria-hidden="true"><i id="timerFill"></i></div>
+ <figure class="canvasWrap" style="margin:0">
+   <canvas id="plot" role="img" aria-describedby="canvasDesc"></canvas>
+   <div class="north">N ↑</div>
+   <figcaption id="canvasDesc" class="hidden">Plot showing own-ship at center and target relative bearing and range.</figcaption>
+ </figure>
+ <div class="dataGrid" aria-hidden="true">
+  <div class="datum"><small>O/S course and speed</small><b id="osData"></b></div><div class="datum"><small>Target bearing and range</small><b id="losData"></b></div><div class="datum"><small>Target AOB and speed</small><b id="targetData"></b></div>
+ </div>
+</section>
+<section class="card">
+ <div class="settings">
+  <div><label for="mode">Scenario mix</label><select id="mode"><option value="adaptive">Adaptive mix</option><option>Crossing</option><option>Overtaking</option><option>Collision course</option><option>Parallel</option><option>Opening</option><option>Closing</option></select></div>
+  <div><label for="startLevel">Starting difficulty</label><select id="startLevel"><option value="1">1 · Fundamentals</option><option value="2">2 · Developing</option><option value="3">3 · Skilled</option><option value="4">4 · Advanced</option><option value="5">5 · Expert</option></select></div>
+ </div>
+ <div class="progress" aria-hidden="true"><i id="levelProgress"></i></div>
+ <p class="legend">AOB is the aspect from the target's bow toward the observing vessel. Enter courses as 000°–359°. CPA is the minimum separation if both vessels maintain present course and speed. Intercept uses the displayed O/S intercept speed and solves for a moving target.</p>
+ <div class="answerRow"><div><label for="tcourse">Estimated target course (°T)</label><input id="tcourse" type="number" inputmode="numeric" min="0" max="359" step="1" placeholder="000–359" aria-describedby="errT"></div><div><label for="cpa">Estimated CPA (yards)</label><input id="cpa" type="number" inputmode="numeric" min="0" step="1" placeholder="e.g. 1800" aria-describedby="errC"></div></div>
+ <div><label for="intercept">O/S course to intercept at <span id="interceptSpeed"></span> knots (°T)</label><input id="intercept" type="number" inputmode="numeric" min="0" max="359" step="1" placeholder="000–359" aria-describedby="errI"></div>
+ <div class="buttons"><button class="primary" id="check">Check answers</button><button id="hint">Hint</button><button class="warn" id="new">Skip / new problem</button><button id="reset">Reset session</button></div>
+ <div class="feedback" id="feedback" role="status" aria-live="polite">Select a scenario mix, then solve the plotted problem. The timer begins with each new problem.</div>
+ <div style="display:flex;gap:8px;margin-top:6px">
+   <small id="errT" class="hidden" style="color:var(--amber)"></small>
+   <small id="errC" class="hidden" style="color:var(--amber)"></small>
+   <small id="errI" class="hidden" style="color:var(--amber)"></small>
+ </div>
+ <div class="history" id="history" aria-live="polite"></div>
+</section>
+</main>
+<script>
+'use strict';
+(function(){
+const $=id=>document.getElementById(id), C=$('plot'), ctx=C.getContext('2d');
+const RAD=Math.PI/180, YPH_PER_KT=2025.3718;
+let p=null, timerId=null, remaining=0, submitted=false, timerRunning=false, pausedByVisibility=false;
+let state={score:0,streak:0,attempts:0,correct:0,level:1,recent:[]};
+const types=['Crossing','Overtaking','Collision course','Parallel','Opening','Closing'];
+const norm=d=>(d%360+360)%360, rand=(a,b)=>a+Math.random()*(b-a), pick=a=>a[Math.floor(Math.random()*a.length)];
+const angDiff=(a,b)=>Math.abs(((a-b+540)%360)-180);
+const vec=(course,speed)=>({x:speed*Math.sin(course*RAD),y:speed*Math.cos(course*RAD)});
+const pos=(bearing,range)=>({x:range*Math.sin(bearing*RAD),y:range*Math.cos(bearing*RAD)});
+const bearing=(x,y)=>norm(Math.atan2(x,y)/RAD);
+const fmtCourse=d=>String(Math.round(norm(d))).padStart(3,'0')+'°T';
+function aobFrom(tc,bearingOS){const back=norm(bearingOS+180), rel=((back-tc+540)%360)-180;return {side:rel>=0?'S':'P',degrees:Math.abs(rel)};}
+function metrics(q){
+ const r=pos(q.tb,q.range), vo=vec(q.osCourse,q.osSpeed), vt=vec(q.tCourse,q.tSpeed), vr={x:(vt.x-vo.x)*YPH_PER_KT,y:(vt.y-vo.y)*YPH_PER_KT};
+ const vv=vr.x*vr.x+vr.y*vr.y; let t=vv?-(r.x*vr.x+r.y*vr.y)/vv:0; const future=t>0; if(t<0)t=0;
+ const cx=r.x+vr.x*t,cy=r.y+vr.y*t; q.cpa=Math.hypot(cx,cy);q.tcpa=t*60;q.futureCPA=future;q.rangeRate=(r.x*vr.x+r.y*vr.y)/q.range/YPH_PER_KT;
+ const s=q.interceptSpeed*YPH_PER_KT, V={x:vt.x*YPH_PER_KT,y:vt.y*YPH_PER_KT};
+ const A=V.x*V.x+V.y*V.y-s*s,B=2*(r.x*V.x+r.y*V.y),CC=r.x*r.x+r.y*r.y;
+ let roots=[];if(Math.abs(A)<1e-8){if(Math.abs(B)>1e-8)roots=[-CC/B]}else{const D=B*B-4*A*CC;if(D>=0){roots=[(-B-Math.sqrt(D))/(2*A),(-B+Math.sqrt(D))/(2*A)]}}
+ roots=roots.filter(x=>x>0).sort((a,b)=>a-b);q.interceptPossible=roots.length>0;
+ if(q.interceptPossible){q.interceptTime=roots[0]*60;q.intercept=bearing(r.x+V.x*roots[0],r.y+V.y*roots[0]);}else{q.intercept=NaN;q.interceptTime=NaN}
+ return q;
+}
+function candidate(type,level){
+ const range=Math.round(rand(4,16)*1000/(level<3?500:100))*(level<3?500:100), tb=level===1?Math.round(rand(0,359)/10)*10:Math.round(rand(0,359));
+ let osCourse=Math.round(rand(0,359)),osSpeed=Math.round(rand(7,18)),tCourse,tSpeed;
+ if(type==='Parallel'){tCourse=norm(osCourse+pick([-1,1])*rand(0,level<3?5:12));tSpeed=Math.round(rand(7,18));}
+ else if(type==='Overtaking'){tCourse=norm(osCourse+rand(-10,10));tSpeed=Math.round(rand(5,Math.max(6,osSpeed-2)));osSpeed=Math.max(osSpeed,tSpeed+3);}
+ else if(type==='Collision course'){
+   tSpeed=Math.round(rand(7,20)); const r=pos(tb,range),vo=vec(osCourse,osSpeed); let best={d:1e9,c:0};
+   for(let c=0;c<360;c++){let vt=vec(c,tSpeed),vr={x:(vt.x-vo.x)*YPH_PER_KT,y:(vt.y-vo.y)*YPH_PER_KT},dot=r.x*vr.x+r.y*vr.y;if(dot>=0)continue;let tt=-dot/(vr.x*vr.x+vr.y*vr.y),d=Math.hypot(r.x+vr.x*tt,r.y+vr.y*tt);if(d<best.d)best={d,c};}tCourse=best.c;
+ }
+ else if(type==='Crossing'){tCourse=norm(osCourse+pick([-1,1])*rand(55,125));tSpeed=Math.round(rand(7,20));}
+ else if(type==='Opening'){tCourse=norm(tb+rand(-45,45));tSpeed=Math.round(rand(10,22));osCourse=norm(tb+180+rand(-50,50));}
+ else {tCourse=norm(tb+180+rand(-35,35));tSpeed=Math.round(rand(8,20));osCourse=norm(tb+rand(-50,50));}
+ const q={type,range,tb,osCourse:Math.round(norm(osCourse)),osSpeed,tCourse:Math.round(norm(tCourse)),tSpeed,interceptSpeed:Math.max(12,Math.round(rand(Math.max(12,tSpeed+2),Math.max(16,tSpeed+10))))};
+ const a=aobFrom(q.tCourse,q.tb);q.side=a.side;q.aob=a.degrees;return metrics(q);
+}
+function valid(q,type){
+ if(q.aob<6||q.aob>174||!q.interceptPossible||q.interceptTime>120)return false;
+ if(type==='Collision course')return q.futureCPA&&q.cpa<350&&q.tcpa>2;
+ if(type==='Opening')return q.rangeRate>1;
+ if(type==='Closing')return q.rangeRate<-1&&q.cpa>400;
+ if(type==='Overtaking')return q.osSpeed>q.tSpeed&&angDiff(q.osCourse,q.tCourse)<15;
+ if(type==='Parallel')return angDiff(q.osCourse,q.tCourse)<13&&q.cpa>500;
+ if(type==='Crossing')return angDiff(q.osCourse,q.tCourse)>45&&angDiff(q.osCourse,q.tCourse)<135;
+ return true;
+}
+function generate(){
+ const selected=$('mode').value; const type=selected==='adaptive'?pick(types):selected; let q;
+ for(let i=0;i<250;i++){q=candidate(type,state.level);if(valid(q,type))break} return q;
+}
+function tolerance(){return state.level<=2?{c:10,cpa:1000}:{c:state.level===3?7:5,cpa:state.level===3?700:500}}
+function timeLimit(){return [0,90,75,60,50,40][state.level]}
+
+function setFeedbackLines(lines){
+ const fb=$('feedback');
+ fb.innerHTML=''; // container cleared (only internal content)
+ lines.forEach(line=>{
+   const div=document.createElement('div');
+   if(line.type) div.className=line.type;
+   div.textContent=line.text;
+   fb.appendChild(div);
+ });
+}
+function setNeutral(msg){
+ setFeedbackLines([{type:'neutral',text:msg}]);
+}
+
+// high-DPI canvas handling: set canvas size to CSS size * dpr and set transform so drawing uses CSS pixels
+function resizeCanvas(){
+ const dpr=Math.max(1,window.devicePixelRatio||1);
+ const cssWidth = C.clientWidth || Math.min(760, window.innerWidth-64);
+ const cssHeight = Math.max(300, Math.round(cssWidth * 0.82)); // keep a reasonable aspect
+ C.style.height = cssHeight + 'px';
+ C.width = Math.round(cssWidth * dpr);
+ C.height = Math.round(cssHeight * dpr);
+ ctx.setTransform(dpr,0,0,dpr,0,0);
+ // redraw if there is a current problem
+ if(p) draw();
+}
+
+function draw(){
+ // use CSS pixels for drawing coordinates now that context is transformed
+ const W = C.clientWidth, H = parseInt(C.style.height,10) || (C.clientHeight || 620);
+ ctx.clearRect(0,0,W,H);
+ const cx=W/2,cy=H/2;
+ ctx.strokeStyle='#18354c';ctx.lineWidth=1;
+ for(let r=80;r<300;r+=70){ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.stroke()}
+ for(let a=0;a<360;a+=30){let z=pos(a,290);ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+z.x*getScale(),cy-z.y*getScale());ctx.stroke()}
+ const scale=Math.min(255/p.range,.035),rpos=pos(p.tb,p.range),tx=cx+rpos.x*scale,ty=cy-rpos.y*scale;
+ ctx.strokeStyle='#66d9ff';ctx.setLineDash([8,6]);ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(tx,ty);ctx.stroke();ctx.setLineDash([]);
+ drawShip(cx,cy,p.osCourse,14,'#42b9e8','O/S');arrow(cx,cy,p.osCourse,70,'#42b9e8');drawShip(tx,ty,p.tCourse,16,'#ffbd55','Target');arrow(tx,ty,p.tCourse,75,'#ffbd55');
+ const mx=(cx+tx)/2,my=(cy+ty)/2;ctx.fillStyle='#d6e8f6';ctx.font='13px system-ui';ctx.fillText(`${fmtCourse(p.tb)}  •  ${Math.round(p.range).toLocaleString()} yd`,mx+8,my-8);
+ ctx.fillStyle='#9bb3c9';ctx.fillText('Target hull and arrow show observed aspect, not target course data supplied to trainee.',16,H-17);
+}
+
+// helper scale used for some drawing functions (matches original small-scale math)
+function getScale(){ return Math.min(255/p.range,.035); }
+
+function drawShip(x,y,course,size,color,label){
+ ctx.save();ctx.translate(x,y);ctx.rotate(course*RAD);ctx.beginPath();ctx.moveTo(0,-size*1.35);ctx.lineTo(size*.62,-size*.55);ctx.lineTo(size*.58,size);ctx.lineTo(0,size*1.28);ctx.lineTo(-size*.58,size);ctx.lineTo(-size*.62,-size*.55);ctx.closePath();ctx.fillStyle=color;ctx.fill();ctx.strokeStyle='#e8f7ff';ctx.lineWidth=1.5/Math.max(1,window.devicePixelRatio||1);ctx.stroke();ctx.restore();ctx.fillStyle='#eaf5ff';ctx.font='bold 14px system-ui';ctx.fillText(label,x+15,y-12);
+}
+function arrow(x,y,course,len,color){ctx.save();ctx.translate(x,y);ctx.rotate(course*RAD);ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=3/Math.max(1,window.devicePixelRatio||1);ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-len);ctx.stroke();ctx.beginPath();ctx.moveTo(0,-len);ctx.lineTo(-6,-len+12);ctx.lineTo(6,-len+12);ctx.closePath();ctx.fill();ctx.restore()}
+
+function newProblem(skipped=false){
+ if(skipped&&p&&!submitted){state.streak=0;state.attempts++;state.recent.push(0);state.recent=state.recent.slice(-8);updateLevel();}
+ p=generate();submitted=false;['tcourse','cpa','intercept'].forEach(id=>$(id).value='');
+ // reset hints / errors
+ $('hint').dataset.n=0;
+ ['errT','errC','errI'].forEach(id=>{$(id).classList.add('hidden');$(id).textContent='';});
+ setNeutral('Plot the geometry, estimate the three answers, then check your work.');
+ $('check').disabled=false;
+ $('osData').textContent=`${fmtCourse(p.osCourse)} @ ${p.osSpeed} kt`;
+ $('losData').textContent=`${fmtCourse(p.tb)} / ${Math.round(p.range).toLocaleString()} yd`;
+ $('targetData').textContent=`${p.side}${Math.round(p.aob)}° / ${p.tSpeed} kt`;
+ $('interceptSpeed').textContent=p.interceptSpeed;
+ $('scenario').textContent=p.type.replace(' course','');
+ // update canvas description for screen readers
+ const desc = `Own-ship course ${fmtCourse(p.osCourse)} at ${p.osSpeed} knots. Observed bearing to target ${fmtCourse(p.tb)} at ${Math.round(p.range).toLocaleString()} yards. Target aspect ${p.side}${Math.round(p.aob)} degrees; target speed ${p.tSpeed} knots.`;
+ C.setAttribute('aria-label', 'Relative plot: ' + desc);
+ const canvasDesc = $('canvasDesc'); canvasDesc.classList.remove('hidden'); canvasDesc.textContent = desc;
+ resizeCanvas();
+ startTimer(true); // start fresh
+ refreshStats();
+ // focus first input for keyboard users
+ setTimeout(()=>$('tcourse').focus(), 50);
+}
+
+function validateInputs(){
+ const errs = {tc:false,cpa:false,ic:false};
+ const tc = $('tcourse'), cp = $('cpa'), ic = $('intercept');
+ const vtc = tc.value === '' ? NaN : Number(tc.value);
+ const vcp = cp.value === '' ? NaN : Number(cp.value);
+ const vic = ic.value === '' ? NaN : Number(ic.value);
+ // validate numeric presence and ranges
+ if(!Number.isFinite(vtc) || isNaN(vtc) || vtc<0 || vtc>359){ errs.tc = true; $('errT').textContent = 'Enter target course 000–359'; $('errT').classList.remove('hidden'); } else $('errT').classList.add('hidden');
+ if(!Number.isFinite(vcp) || isNaN(vcp) || vcp<0){ errs.cpa = true; $('errC').textContent = 'Enter CPA in yards (0 or more)'; $('errC').classList.remove('hidden'); } else $('errC').classList.add('hidden');
+ if(!Number.isFinite(vic) || isNaN(vic) || vic<0 || vic>359){ errs.ic = true; $('errI').textContent = 'Enter intercept course 000–359'; $('errI').classList.remove('hidden'); } else $('errI').classList.add('hidden');
+ return {ok:!errs.tc && !errs.cpa && !errs.ic, values:{tc:vtc,cpa:vcp,ic:vic}};
+}
+
+function check(){
+ if(submitted)return;
+ const validated = validateInputs();
+ if(!validated.ok){ setNeutral('Please fix the highlighted input(s) before checking.'); return; }
+ const vals=validated.values;
+ submitted=true; clearInterval(timerId); timerRunning=false; $('check').disabled=true;
+ const tol=tolerance(),ok1=angDiff(vals.tc,p.tCourse)<=tol.c,ok2=Math.abs(vals.cpa-p.cpa)<=tol.cpa,ok3=Math.abs(angDiff(vals.ic,p.intercept))<=tol.c,all=ok1&&ok2&&ok3;
+ state.attempts++;
+ if(all){state.correct++;state.streak++;state.score+=100*state.level+Math.max(0,remaining)*2+Math.min(100,state.streak*10);state.recent.push(1)}
+ else{state.streak=0;state.score=Math.max(0,state.score-20);state.recent.push(0)}
+ state.recent=state.recent.slice(-8);updateLevel();
+ // build feedback safely using DOM nodes
+ const lines = [];
+ lines.push({type: ok1 ? 'good' : 'bad', text: `${ok1 ? '✓' : '✗'} Target course ${fmtCourse(p.tCourse)} (reciprocal LOS ${fmtCourse(norm(p.tb+180))}, AOB ${p.side}${Math.round(p.aob)}°)`});
+ lines.push({type: ok2 ? 'good' : 'bad', text: `${ok2 ? '✓' : '✗'} CPA ${Math.round(p.cpa).toLocaleString()} yd${p.futureCPA?` in ${p.tcpa.toFixed(1)} min`:'; closest point is already past'}`});
+ if(Number.isFinite(p.intercept)) lines.push({type: ok3 ? 'good' : 'bad', text: `${ok3 ? '✓' : '✗'} Intercept course ${fmtCourse(p.intercept)} at ${p.interceptSpeed} kt, intercept in ${p.interceptTime.toFixed(1)} min`});
+ lines.push({type:'neutral', text: `Tolerance: ±${tol.c}° and ±${tol.cpa.toLocaleString()} yd.`});
+ setFeedbackLines(lines);
+ addHistory(all);
+ refreshStats();
+}
+
+function updateLevel(){const prev=state.level;if(state.recent.length>=4){const rate=state.recent.reduce((a,b)=>a+b,0)/state.recent.length;if(rate>=.75&&state.level<5)state.level++;else if(rate<.45&&state.level>1)state.level--;if(state.level!==prev)state.recent=[]}}
+
+function startTimer(fresh){
+ clearInterval(timerId); timerRunning=false;
+ if(fresh){ remaining = timeLimit(); }
+ const total = Math.max(1, remaining);
+ $('timer').textContent = remaining;
+ $('timerFill').style.width = remaining>0 ? '100%' : '0%';
+ $('timerFill').style.background = 'var(--green)';
+ if(submitted) return;
+ timerRunning=true;
+ timerId = setInterval(()=>{
+   if(pausedByVisibility) return;
+   remaining--; $('timer').textContent = remaining;
+   const pct = Math.max(0, remaining/total*100);
+   $('timerFill').style.width = `${pct}%`;
+   if(remaining<15) $('timerFill').style.background='var(--red)';
+   if(remaining<=0){
+     clearInterval(timerId); timerRunning=false;
+     if(!submitted){
+       state.streak=0; state.attempts++; state.recent.push(0); state.recent=state.recent.slice(-8);
+       submitted=true; $('check').disabled=true;
+       // show final results
+       const msg = Number.isFinite(p.intercept) ? `Target ${fmtCourse(p.tCourse)}, CPA ${Math.round(p.cpa).toLocaleString()} yd, intercept ${fmtCourse(p.intercept)}.` : `Target ${fmtCourse(p.tCourse)}, CPA ${Math.round(p.cpa).toLocaleString()} yd.`;
+       setFeedbackLines([{type:'bad', text:'Time expired.'},{type:'neutral', text: msg}]);
+       updateLevel(); addHistory(false); refreshStats();
+     }
+   }
+ },1000);
+}
+
+function pauseTimerForVisibility(){ if(timerRunning){ clearInterval(timerId); timerRunning=false; pausedByVisibility=true; setNeutral('Timer paused while page is hidden.'); } }
+function resumeTimerFromVisibility(){ if(pausedByVisibility && !submitted){ pausedByVisibility=false; startTimer(false); setNeutral('Timer resumed.'); } }
+
+function hint(){
+ if(!p||submitted) return;
+ const hints=[`Reciprocal bearing is ${fmtCourse(norm(p.tb+180))}. Apply ${p.side==='P'?'plus':'minus'} AOB for target course.`,`CPA comes from the target's velocity minus O/S velocity. The present range is ${p.range.toLocaleString()} yd.`,`Lead the target. The direct LOS bearing is ${fmtCourse(p.tb)}, but target motion shifts the intercept point.`];
+ const used=+$('hint').dataset.n||0; $('hint').dataset.n=Math.min(2,used+1);
+ setNeutral(`Hint: ${hints[Math.min(used,2)]}`);
+ state.score=Math.max(0,state.score-10); refreshStats();
+}
+
+function addHistory(ok){
+ const d=document.createElement('div');
+ const badge=document.createElement('span'); badge.className='badge'; badge.textContent=`L${state.level}`;
+ const status=document.createElement('b'); status.className = ok ? 'good' : 'bad'; status.textContent = ok ? 'Correct' : 'Review';
+ d.appendChild(badge);
+ d.appendChild(document.createTextNode(' '));
+ d.appendChild(status);
+ d.appendChild(document.createTextNode(` · ${p.type} · TC ${fmtCourse(p.tCourse)} · CPA ${Math.round(p.cpa)} yd · INT ${Number.isFinite(p.intercept)?fmtCourse(p.intercept):'—'}`));
+ const hist = $('history');
+ hist.prepend(d);
+}
+
+function refreshStats(){
+ $('score').textContent=state.score;
+ $('streak').textContent=state.streak;
+ $('accuracy').textContent=state.attempts?Math.round(100*state.correct/state.attempts)+'%':'0%';
+ $('level').textContent=state.level;
+ $('levelProgress').style.width=((state.level-1)/4*100)+'%';
+}
+
+function reset(){
+ clearInterval(timerId); state={score:0,streak:0,attempts:0,correct:0,level:+$('startLevel').value||1,recent:[]}; $('history').innerHTML=''; $('hint').dataset.n=0; newProblem();
+}
+
+// wire up events
+$('check').onclick = check;
+$('new').onclick = ()=>newProblem(true);
+$('reset').onclick = reset;
+$('hint').onclick = hint;
+$('mode').onchange = ()=>newProblem(true);
+$('startLevel').onchange = ()=>{ state.level = +$('startLevel').value || 1; newProblem(true); };
+document.addEventListener('keydown', e=>{ if(e.key==='Enter' && !submitted) check(); });
+
+// visibility handling (pause timer when page is hidden)
+document.addEventListener('visibilitychange', ()=>{
+ if(document.hidden) { pauseTimerForVisibility(); }
+ else { resumeTimerFromVisibility(); }
+});
+
+// resizing and DPR
+window.addEventListener('resize', ()=>{ resizeCanvas(); });
+
+// initialize
+(function init(){
+ // set initial level
+ state.level = +$('startLevel').value || 1;
+ // initial canvas sizing and draw
+ resizeCanvas();
+ // start
+ reset();
+})();
+
+})();
+</script>
+</body></html>
